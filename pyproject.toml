@@ -1,0 +1,17 @@
+[project]
+name = "aqar-intel"
+version = "0.1.0"
+description = "Arabic-first AI platform for real-estate development: RAG sales assistant, contract intelligence, sales analytics"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ahmed Alhassan", email = "ahmedelhassen11@gmail.com" }]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::UserWarning", "ignore::FutureWarning"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py310"

@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Regenerate simulated data (determinism check)
+        run: python scripts/generate_data.py --seed 42 > /dev/null
+      - name: Unit tests (offline, mock LLM)
+        run: AQAR_LLM_MODE=mock pytest
+      - name: Offline end-to-end smoke
+        run: AQAR_LLM_MODE=mock python scripts/run_demo.py all > /dev/null

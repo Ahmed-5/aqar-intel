@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.DS_Store
+# generated artefacts that depend on your embedder / LLM
+data/index/
+data/models/
+data/reports/*.png
+data/reports/metrics.json
+data/reports/extraction_eval.md
