@@ -153,6 +153,7 @@ def build_report(out_dir: Path = REPORTS_DIR, llm: LLM | None = None, langs: tup
             "",
             summary,
             "",
+            "<!-- appendix -->",  # the UI shows only the summary above this marker; charts/metrics follow
             "---",
             "",
             "![absorption](absorption.png)",

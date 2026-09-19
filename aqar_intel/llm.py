@@ -106,20 +106,31 @@ class OpenRouterLLM:
         max_tokens: int = 1024,
         retries: int = 2,
     ) -> str:
+        # ``max_tokens`` is the budget for the *visible* answer. Reasoning models (Gemini 3.x, GPT-5, Claude with
+        # thinking) spend hidden reasoning tokens from the same budget, so we add headroom up front and grow the
+        # budget once more if the reply still comes back truncated (finish_reason == "length"). Without this, a
+        # 50-token router call or an 800-token extraction call returns half a JSON object on those models.
         kwargs: dict[str, Any] = dict(
             model=self.model,
             messages=messages,
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_tokens=max_tokens + self.settings.reasoning_headroom,
         )
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
+        if self.settings.reasoning_effort:
+            kwargs["extra_body"] = {"reasoning": {"effort": self.settings.reasoning_effort}}
 
         last_err: Exception | None = None
         for attempt in range(retries + 1):
             try:
                 resp = self._client.chat.completions.create(**kwargs)
-                content = resp.choices[0].message.content or ""
+                choice = resp.choices[0]
+                content = choice.message.content or ""
+                if choice.finish_reason == "length" and attempt < retries:
+                    kwargs["max_tokens"] *= 3
+                    log.warning("LLM reply truncated (finish_reason=length); retrying with max_tokens=%d", kwargs["max_tokens"])
+                    continue
                 return content
             except Exception as e:  # noqa: BLE001 - we want to retry on any transport/provider error
                 last_err = e
@@ -128,6 +139,10 @@ class OpenRouterLLM:
                 if json_mode and ("response_format" in msg or "json_object" in msg):
                     kwargs.pop("response_format", None)
                     json_mode = False
+                    continue
+                # Some providers reject the reasoning parameter; retry once without it.
+                if "extra_body" in kwargs and "reasoning" in msg:
+                    kwargs.pop("extra_body", None)
                     continue
                 if attempt < retries:
                     sleep = 1.5 * (attempt + 1)

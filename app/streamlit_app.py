@@ -125,7 +125,8 @@ with tab_docs:
                     rows = [(f, pred.get(f), truth.get(f), "✅" if field_match(f, pred.get(f), truth.get(f)) else "❌") for f in FIELDS]
                     st.markdown("**Against ground truth**")
                     st.dataframe({"field": [r[0] for r in rows], "extracted": [str(r[1]) for r in rows],
-                                  "truth": [str(r[2]) for r in rows], "ok": [r[3] for r in rows]}, use_container_width=True, hide_index=True)
+                                  "truth": [str(r[2]) for r in rows], "ok": [r[3] for r in rows]},
+                                 use_container_width=True, hide_index=True, height=35 * (len(rows) + 1) + 3)
         eval_path = REPORTS_DIR / "extraction_eval.md"
         if eval_path.exists():
             with st.expander("Latest batch evaluation (scripts/run_demo.py evaluate)"):
@@ -162,7 +163,10 @@ with tab_analytics:
         p = REPORTS_DIR / f"sales_report_{lang}.md"
         if p.exists():
             with st.expander(label, expanded=(lang == "ar")):
-                st.markdown(p.read_text(encoding="utf-8").split("---")[0])
+                text = p.read_text(encoding="utf-8")
+                # Show only the LLM summary; the charts/metrics appendix is rendered above. Models often emit
+                # "---" rules inside the summary, so split on the explicit marker written by build_report.
+                st.markdown(text.split("<!-- appendix -->")[0] if "<!-- appendix -->" in text else text)
 
     st.markdown("#### Price a unit")
     with st.form("price_form"):

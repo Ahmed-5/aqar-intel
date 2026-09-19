@@ -35,7 +35,7 @@ class Settings:
         default_factory=lambda: os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     )
     chat_model: str = field(
-        default_factory=lambda: os.getenv("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+        default_factory=lambda: os.getenv("OPENROUTER_MODEL", "google/gemini-3.7-flash")
     )
     embedding_model: str = field(
         default_factory=lambda: os.getenv("OPENROUTER_EMBEDDING_MODEL", "openai/text-embedding-3-small")
@@ -45,6 +45,13 @@ class Settings:
     app_name: str = field(default_factory=lambda: os.getenv("AQAR_APP_NAME", "AqarIntel"))
     app_url: str = field(default_factory=lambda: os.getenv("AQAR_APP_URL", "https://github.com/Ahmed-5"))
     request_timeout: float = field(default_factory=lambda: float(os.getenv("AQAR_TIMEOUT", "60")))
+    # Reasoning models (Gemini 3.x, GPT-5, Claude with thinking) spend hidden "thinking" tokens from the same
+    # max_tokens budget as the visible answer. The client adds this headroom to every request so short JSON
+    # replies (router, SQL, extraction) are not cut off mid-object.
+    reasoning_headroom: int = field(default_factory=lambda: int(os.getenv("AQAR_REASONING_HEADROOM", "2048")))
+    # Optional OpenRouter reasoning effort (none | minimal | low | medium | high). Leave unset to keep the
+    # model's default; "low" makes Gemini 3.x structured-extraction calls noticeably faster and cheaper.
+    reasoning_effort: str | None = field(default_factory=lambda: os.getenv("OPENROUTER_REASONING_EFFORT") or None)
     random_seed: int = field(default_factory=lambda: int(os.getenv("AQAR_SEED", "42")))
 
     @property

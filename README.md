@@ -12,7 +12,7 @@ concrete jobs, built on **simulated data** (fictional developer, projects, buyer
 | 📈 **Sales analytics** | Prices units, forecasts absorption per project, and writes a bilingual executive report | Gradient boosting with time-based split, backtested forecasters, LLM report over computed KPIs |
 
 All LLM calls go through **OpenRouter** (one key, any model). Without a key the whole platform still runs
-offline in mock mode — retrieval, SQL guardrails, validation, analytics and 30 unit tests included.
+offline in mock mode — retrieval, SQL guardrails, validation, analytics and 32 unit tests included.
 
 ---
 
@@ -106,6 +106,31 @@ Docker: `docker build -t aqar-intel . && docker run -p 8501:8501 --env-file .env
 
 ---
 
+## Screenshots
+
+Live run through OpenRouter with `google/gemini-3.7-flash` (chat, SQL, extraction, report) and
+`openai/text-embedding-3-small` (retrieval).
+
+**Sales assistant** — two Arabic questions: the first is routed to the guarded text-to-SQL agent (query and result
+rows shown), the second to the document index with citations back to the payment-plan documents.
+
+![Sales assistant answering in Arabic](docs/screenshots/01_sales_assistant_ar.png)
+
+**Contract intelligence** — the held-out layout E (free-form Arabic confirmation letter with Arabic-Indic dates)
+extracted by the LLM, validated, and compared field by field against ground truth. The rule-based baseline gets
+0 of 17 fields on this file.
+
+![Contract extraction checked against ground truth](docs/screenshots/02_contract_extraction.png)
+
+**Sales analytics** — KPI snapshot, per-project inventory, monthly absorption with the backtested forecast (dashed),
+achieved price per sqm, and the LLM-written Arabic executive report generated from computed KPIs only.
+
+![Sales analytics dashboard](docs/screenshots/03_sales_analytics.png)
+
+![Arabic executive report](docs/screenshots/04_executive_report_ar.png)
+
+---
+
 ## What each module actually does
 
 ### 1. Sales assistant (`aqar_intel/rag/`)
@@ -167,14 +192,27 @@ Top permutation importances: `area_sqm`, `project_id`, `unit_type`, `bathrooms`,
 
 | Template | A (clauses) | B (letter, Arabic-Indic digits) | C (CRM sheet) | D (English) | E (held-out) | Overall |
 |---|---|---|---|---|---|---|
-| Field accuracy | 100% | 100% | 100% | 100% | 2.9% | 80.4% |
+| Field accuracy | 100% | 100% | 100% | 100% | 2.2% | 80.4% |
 
-Planted inconsistencies caught by validation: **3 / 3**.
+Planted inconsistencies caught by validation: **3 / 3** (plus 8 template-E records correctly flagged as failed extractions).
 
-**Contract extraction — LLM** (`python scripts/run_demo.py evaluate --extractor llm`)
+**Contract extraction — LLM** (`python scripts/run_demo.py evaluate --extractor both`, `google/gemini-3.7-flash` via
+OpenRouter, 40 contracts × 17 fields, 252 s, temperature 0)
 
-> Fill in after running with your OpenRouter key; the script writes the table to `data/reports/extraction_eval.md`.
-> Compare especially template **E**, where the baseline fails, and template **B** (Arabic-Indic digits).
+| Template | A (clauses) | B (letter, Arabic-Indic digits) | C (CRM sheet) | D (English) | E (held-out) | Overall |
+|---|---|---|---|---|---|---|
+| Field accuracy | 100% | 100% | 100% | 100% | **100%** | **100%** |
+
+* Contracts with every field correct: **40 / 40**; every one of the 17 fields at 100% (including Arabic-Indic digits,
+  Arabic month names and `تمويل بنكي` → `bank_financing` normalisation through the Pydantic schema).
+* Flagged for human review: **3**, exactly the three deliberately inconsistent contracts — no false alarms.
+* The held-out template **E** is the whole argument: the regex baseline drops from 100% to 2.2% on a layout it has
+  never seen, the LLM extractor does not notice the difference.
+* What running it actually taught us: Gemini 3.x spends ~600 hidden *reasoning* tokens per call from the same
+  `max_tokens` budget as the answer. With the original 800-token cap, half of the extractions (11 of the first 22
+  contracts) came back as a truncated JSON object and failed outright, and the 50-token router call failed on every
+  question, silently falling back to the keyword heuristic. The client now adds reasoning headroom and retries
+  truncated replies (see Design notes); the table above is with that fix, prompts unchanged.
 
 ---
 
@@ -192,7 +230,7 @@ aqar_intel/
 app/streamlit_app.py   3-tab demo UI
 api/main.py            FastAPI service
 scripts/               generate_data.py · build_index.py · run_demo.py
-tests/                 30 offline tests (pytest)
+tests/                 32 offline tests (pytest)
 data/                  simulated data (committed) · index/models/reports (generated)
 ```
 
@@ -212,6 +250,13 @@ data/                  simulated data (committed) · index/models/reports (gener
 * **Tree models do not extrapolate trends.** The pricing model treats months beyond its training window as the
   last known month; for a live system, detrend prices with a price index or add a linear time term. This is
   visible in the near-zero importance of `month_index` and is left as-is deliberately for honesty.
+* **Reasoning models eat your `max_tokens`.** Gemini 3.x, GPT-5 and Claude-with-thinking bill hidden reasoning tokens
+  against the same budget as the visible answer, so a 50-token router call or an 800-token extraction call returns a
+  truncated JSON object. `OpenRouterLLM` therefore treats `max_tokens` as the *visible* budget, adds
+  `AQAR_REASONING_HEADROOM` (default 2048) to every request, and retries once with a 3× budget when
+  `finish_reason == "length"`. `OPENROUTER_REASONING_EFFORT=low` is optional: on the 40-contract evaluation it cut
+  the run from 252 s to 152 s and dropped field accuracy from 100% to 99.9% (one project name came back with a
+  leading *مشروع*), so it is a reasonable default for bulk extraction but not the one the table above reports.
 * **Access control.** The SQL agent is read-only by construction. In production, row-level filters
   (e.g. a sales agent only sees their region) belong in the database view the agent connects to, not in the prompt.
 
